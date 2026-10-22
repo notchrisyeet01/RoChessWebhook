@@ -3,8 +3,43 @@ local FLIP_BOARD = false
 local SCAN_DELAY = 0.15
 local API_URL = "https://rochess-gateway.vercel.app/api/analyze"
 local API_KEY = ""
-local ANALYSIS_DEPTH = 12
-local PLAY_AS = "White" -- "White", "Black", or "Any"
+local ANALYSIS_DEPTH = 10
+local PLAY_AS = "White"
+local boardCenters = {}
+local arrows = {}
+
+local function removeArrow()
+    for _, arrow in ipairs(arrows) do
+        arrow.Line:Remove()
+        arrow.Head:Remove()
+    end
+    arrows = {}
+end
+
+local function showArrow(fromSquare, toSquare, color)
+    local fromPoint, toPoint = boardCenters[fromSquare], boardCenters[toSquare]
+    if not fromPoint or not toPoint or not Drawing then return end
+    local dx, dy = toPoint.X - fromPoint.X, toPoint.Y - fromPoint.Y
+    local length = math.sqrt(dx * dx + dy * dy)
+    if length < 1 then return end
+    local ux, uy = dx / length, dy / length
+    local px, py = -uy, ux
+    local tip = toPoint
+    local left = Vector2.new(toPoint.X - ux * 18 + px * 9, toPoint.Y - uy * 18 + py * 9)
+    local right = Vector2.new(toPoint.X - ux * 18 - px * 9, toPoint.Y - uy * 18 - py * 9)
+    local arrowLine = Drawing.new("Line")
+    arrowLine.From = fromPoint
+    arrowLine.To = Vector2.new(toPoint.X - ux * 8, toPoint.Y - uy * 8)
+    arrowLine.Color = color
+    arrowLine.Thickness = 4
+    arrowLine.Visible = true
+    local arrowHead = Drawing.new("Triangle")
+    arrowHead.PointA, arrowHead.PointB, arrowHead.PointC = tip, left, right
+    arrowHead.Color = color
+    arrowHead.Filled = true
+    arrowHead.Visible = true
+    arrows[#arrows + 1] = {Line = arrowLine, Head = arrowHead}
+end
 
 if UI and UI.AddTab then
     UI.AddTab("Chess Detector", function(tab)
@@ -86,6 +121,13 @@ local function scan()
         end
     end
     assert(spacing < math.huge and spacing >= 4, "Could not calculate board spacing.")
+    boardCenters = {}
+    for _, square in ipairs(squares) do
+        boardCenters[squareName(square.index)] = Vector2.new(
+            square.x + spacing / 2,
+            square.y + spacing / 2
+        )
+    end
     local tokens, occupied = {}, {}
     for _, piece in ipairs(pieceFolder:GetChildren()) do
         if piece.ClassName == "ImageLabel" or piece.ClassName == "ImageButton" then
@@ -201,6 +243,16 @@ assert(known == 32, "Start before the first move, or start immediately after exa
 local whiteToMove = startedAfterOpening and (PLAY_AS == "White") or (not startedAfterOpening)
 local halfmove, fullmove = 0, startedAfterOpening and 2 or 1
 while true do
+    if UI and UI.GetValue then
+        local selected = UI.GetValue("chess_play_as")
+        if selected == 0 then
+            PLAY_AS = "White"
+        elseif selected == 1 then
+            PLAY_AS = "Black"
+        elseif selected == 2 then
+            PLAY_AS = "Any"
+        end
+    end
     wait(SCAN_DELAY)
     local success, current = pcall(scan)
     if success and not sameSnapshot(previous, current) then
@@ -241,7 +293,6 @@ while true do
                         move.piece = pieceTypes[move.token]
                     end
                 end
-                print(string.format("[Chess] %s: %s -> %s", move.piece or "Unknown piece", move.from, move.to))
                 whiteToMove = not (move.piece and move.piece:sub(1, 5) == "White")
                 if (move.piece and move.piece:find("Pawn")) or capture then
                     halfmove = 0
@@ -270,14 +321,8 @@ while true do
                         local promotion = result.bestmove:sub(5, 5)
                         local suffix = promotion ~= "" and promotion ~= " " and " (promote)" or ""
                         local message = string.format("Move %s: %s -> %s%s", wantedPiece, fromSquare, toSquare, suffix)
-                        print("[Stockfish] " .. message)
-                        if notify then
-                            notify(message, "Stockfish recommendation", 8)
-                        else
-                            print(message)
-                        end
-                    else
-                        warn("Stockfish unavailable: " .. tostring(errorMessage))
+                        removeArrow()
+                        showArrow(fromSquare, toSquare, Color3.fromRGB(40, 220, 80))
                     end
                 end
             end
