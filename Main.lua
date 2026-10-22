@@ -1,5 +1,4 @@
 
-
 local FLIP_BOARD = false
 local SCAN_DELAY = 0.15
 local API_URL = "https://rochess-gateway.vercel.app/api/analyze"
@@ -42,7 +41,6 @@ local function pieceAtStart(square)
 end
 
 local function pieceCode(pieceType)
-    -- Lua patterns do not support regex alternation with '|'.
     local color, kind = pieceType:match("^(%a+) (.+)$")
     local codes = {Pawn="p", Knight="n", Bishop="b", Rook="r", Queen="q", King="k"}
     local code = codes[kind]
@@ -138,8 +136,6 @@ local function makeFen(snapshot, pieceTypes, whiteToMove, halfmove, fullmove)
         if empty > 0 then row = row .. tostring(empty) end
         ranks[#ranks + 1] = row
     end
-    -- Castling/en-passant are intentionally conservative because this detector
-    -- does not read the game's move history. The API still validates the FEN.
     return table.concat(ranks, "/") .. " " .. (whiteToMove and "w" or "b") .. " - - " .. tostring(halfmove) .. " " .. tostring(fullmove)
 end
 
@@ -171,7 +167,6 @@ for token, square in pairs(previous) do
     end
 end
 
--- Allow starting immediately after one opening move.
 if known == 31 and #unknownTokens == 1 and PLAY_AS ~= "Any" then
     local expected = {}
     local files = {"a", "b", "c", "d", "e", "f", "g", "h"}
@@ -224,10 +219,6 @@ while true do
                 end
             end
             if #moved > 0 then
-                -- A scan can contain both sides' moves. Choose the move by
-                -- the side that just moved, instead of relying on pairs()
-                -- ordering. For White, that means Black's move triggers the
-                -- recommendation; for Black, White's move does.
                 local move = moved[1]
                 if PLAY_AS == "White" or PLAY_AS == "Black" then
                     local wantedColor = PLAY_AS == "White" and "Black" or "White"
@@ -242,9 +233,6 @@ while true do
                         continue
                     end
                 end
-                -- A pawn on the last rank must be represented as a promoted
-                -- piece in FEN. Assume queen when the UI does not expose the
-                -- selected promotion piece.
                 if move.piece and move.piece:find("Pawn") then
                     local destinationRank = tonumber(move.to:sub(2, 2))
                     if destinationRank == 1 or destinationRank == 8 then
@@ -253,8 +241,7 @@ while true do
                         move.piece = pieceTypes[move.token]
                     end
                 end
-                -- Derive the side to move from the observed mover. This is
-                -- safer than toggling when two UI animations are coalesced.
+                print(string.format("[Chess] %s: %s -> %s", move.piece or "Unknown piece", move.from, move.to))
                 whiteToMove = not (move.piece and move.piece:sub(1, 5) == "White")
                 if (move.piece and move.piece:find("Pawn")) or capture then
                     halfmove = 0
@@ -283,6 +270,7 @@ while true do
                         local promotion = result.bestmove:sub(5, 5)
                         local suffix = promotion ~= "" and promotion ~= " " and " (promote)" or ""
                         local message = string.format("Move %s: %s -> %s%s", wantedPiece, fromSquare, toSquare, suffix)
+                        print("[Stockfish] " .. message)
                         if notify then
                             notify(message, "Stockfish recommendation", 8)
                         else
