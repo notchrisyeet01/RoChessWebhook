@@ -313,7 +313,8 @@ local function recommend(snapshot)
     local message = string.format("Move %s: %s -> %s%s", wantedPiece, fromSquare, toSquare, suffix)
     removeArrow()
     showArrow(fromSquare, toSquare, Color3.fromRGB(40, 220, 80))
-    print("[Stockfish] " .. message)
+    local backend = result.backend == "local" and "Local" or "Render"
+    print("[Stockfish " .. backend .. "] " .. message)
 end
 
 while true do
@@ -442,7 +443,8 @@ while true do
                         local message = string.format("Move %s: %s -> %s%s", wantedPiece, fromSquare, toSquare, suffix)
                         removeArrow()
                         showArrow(fromSquare, toSquare, Color3.fromRGB(40, 220, 80))
-                        print("[Stockfish] " .. message)
+                        local backend = result.backend == "local" and "Local" or "Render"
+                        print("[Stockfish " .. backend .. "] " .. message)
                     end
                 end
             end
