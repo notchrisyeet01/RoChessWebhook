@@ -1,4 +1,5 @@
 -- Main.lua updated at 10/23/26
+-- Main.lua has the webhook integration added automatically; paste your webhook URL in Matcha's LuaU environment.
 
 local FLIP_BOARD = false
 local SCAN_DELAY = 0.15
