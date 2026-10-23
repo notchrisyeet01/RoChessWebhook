@@ -11,6 +11,7 @@ local pendingFen = nil
 local enteredFen = ""
 local importStatus = "Waiting for a FEN position"
 local newGameRequested = false
+local promotionNames = {q="Queen", r="Rook", b="Bishop", n="Knight"}
 
 local function removeArrow()
     for _, arrow in ipairs(arrows) do
@@ -308,8 +309,8 @@ local function recommend(snapshot)
             break
         end
     end
-    local promotion = result.bestmove:sub(5, 5)
-    local suffix = promotion ~= "" and promotion ~= " " and " (promote)" or ""
+    local promotion = result.bestmove:sub(5, 5):lower()
+    local suffix = promotionNames[promotion] and " (promote to " .. promotionNames[promotion] .. ")" or ""
     local message = string.format("Move %s: %s -> %s%s", wantedPiece, fromSquare, toSquare, suffix)
     removeArrow()
     showArrow(fromSquare, toSquare, Color3.fromRGB(40, 220, 80))
@@ -405,16 +406,16 @@ while true do
                         continue
                     end
                 end
-                if move.piece and move.piece:find("Pawn") then
+                local wasPawn = move.piece and move.piece:find("Pawn") ~= nil
+                if wasPawn then
                     local destinationRank = tonumber(move.to:sub(2, 2))
                     if destinationRank == 1 or destinationRank == 8 then
                         local color = move.piece:sub(1, 5)
                         pieceTypes[move.token] = color .. " Queen"
-                        move.piece = pieceTypes[move.token]
                     end
                 end
                 whiteToMove = not (move.piece and move.piece:sub(1, 5) == "White")
-                if (move.piece and move.piece:find("Pawn")) or capture then
+                if wasPawn or capture then
                     halfmove = 0
                 else
                     halfmove = halfmove + 1
@@ -438,8 +439,8 @@ while true do
                                 break
                             end
                         end
-                        local promotion = result.bestmove:sub(5, 5)
-                        local suffix = promotion ~= "" and promotion ~= " " and " (promote)" or ""
+                        local promotion = result.bestmove:sub(5, 5):lower()
+                        local suffix = promotionNames[promotion] and " (promote to " .. promotionNames[promotion] .. ")" or ""
                         local message = string.format("Move %s: %s -> %s%s", wantedPiece, fromSquare, toSquare, suffix)
                         removeArrow()
                         showArrow(fromSquare, toSquare, Color3.fromRGB(40, 220, 80))
