@@ -4,6 +4,7 @@ local SCAN_DELAY = 0.15
 local API_URL = "https://rochess-gateway.vercel.app/api/analyze"
 local API_KEY = ""
 local ANALYSIS_DEPTH = 10
+local STRENGTH = "high"
 local PLAY_AS = "White" -- "White", "Black", or "Any"
 local boardCenters = {}
 local arrows = {}
@@ -51,6 +52,9 @@ if UI and UI.AddTab then
         local settings = tab:Section("Game Settings", "Left")
         settings:Combo("chess_play_as", "Play as", {"White", "Black", "Any"}, 0, function(_, text)
             PLAY_AS = text
+        end)
+        settings:Combo("chess_strength", "Strength", {"Low", "Medium", "High"}, 2, function(_, text)
+            STRENGTH = string.lower(text)
         end)
         settings:Text("Select your color before playing.")
         settings:Text("Best move: green arrow")
@@ -235,7 +239,7 @@ local function makeFen(snapshot, pieceTypes, whiteToMove, halfmove, fullmove)
 end
 
 local function askStockfish(fen)
-    local body = HttpService:JSONEncode({fen=fen, depth=ANALYSIS_DEPTH})
+    local body = HttpService:JSONEncode({fen=fen, strength=STRENGTH})
     local headers = nil
     if API_KEY ~= "" then
         headers = { ["X-API-Key"] = API_KEY }
