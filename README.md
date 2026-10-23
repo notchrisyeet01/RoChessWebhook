@@ -5,4 +5,4 @@ FORKED FROM: [youziwing/RoChessM](https://github.com/youziwing/RoChessM)
 1. WIP
 
 ## Credits
-All original work and credits go to [youziwing](https://github.com/youziwing).
+Original: [youziwing](https://github.com/youziwing).
