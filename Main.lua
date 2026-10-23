@@ -4,9 +4,13 @@ local SCAN_DELAY = 0.15
 local API_URL = "https://rochess-gateway.vercel.app/api/analyze"
 local API_KEY = ""
 local ANALYSIS_DEPTH = 10
-local PLAY_AS = "White"
+local PLAY_AS = "White" -- "White", "Black", or "Any"
 local boardCenters = {}
 local arrows = {}
+local pendingFen = nil
+local enteredFen = ""
+local importStatus = "Waiting for a FEN position"
+local newGameRequested = false
 
 local function removeArrow()
     for _, arrow in ipairs(arrows) do
@@ -42,13 +46,61 @@ local function showArrow(fromSquare, toSquare, color)
 end
 
 if UI and UI.AddTab then
-    UI.AddTab("Chess Detector", function(tab)
-        local settings = tab:Section("Settings", "Left")
+    UI.AddTab("RoChess AI", function(tab)
+        local settings = tab:Section("Game Settings", "Left")
         settings:Combo("chess_play_as", "Play as", {"White", "Black", "Any"}, 0, function(_, text)
             PLAY_AS = text
         end)
-        settings:Text("Choose your color before starting a game.")
+        settings:Text("Select your color before playing.")
+        settings:Text("Best move: green arrow")
+        settings:Button("New Game", function()
+            newGameRequested = true
+        end)
+        local position = tab:Section("Position Import", "Right")
+        local fenInput = position:InputText("chess_fen", "FEN position", "", function(text)
+            enteredFen = text or ""
+            pendingFen = text
+        end)
+        position:Button("Import Position", function()
+            local text = enteredFen
+            local widgetOk, widgetText = pcall(function() return fenInput:GetValue() end)
+            if widgetOk and widgetText and widgetText ~= "" then text = widgetText end
+            local uiText = UI.GetValue("chess_fen")
+            if uiText and uiText ~= "" then text = uiText end
+            if text and text ~= "" then
+                text = text:gsub("^%s+", ""):gsub("%s+$", "")
+                enteredFen = text
+                pendingFen = text
+                importStatus = "Position queued"
+            else
+                importStatus = "Paste a FEN first"
+            end
+        end)
+        position:Text(importStatus)
     end)
+end
+
+local function fenPieces(fen)
+    local fields = {}
+    for field in fen:gmatch("[^%s]+") do fields[#fields + 1] = field end
+    assert(#fields >= 2, "Invalid FEN")
+    local result, rank = {}, 8
+    for row in fields[1]:gmatch("[^/]+") do
+        local file = 1
+        for char in row:gmatch(".") do
+            local count = tonumber(char)
+            if count then
+                file = file + count
+            else
+                local names = {p="Pawn", n="Knight", b="Bishop", r="Rook", q="Queen", k="King"}
+                local color = char == char:upper() and "White" or "Black"
+                result[string.char(96 + file) .. tostring(rank)] = color .. " " .. names[char:lower()]
+                file = file + 1
+            end
+        end
+        rank = rank - 1
+    end
+    return result, fields[2] == "w"
 end
 
 local Players = game:GetService("Players")
@@ -238,10 +290,32 @@ if known == 31 and #unknownTokens == 1 and PLAY_AS ~= "Any" then
     end
 end
 
-assert(known == 32, "Start before the first move, or start immediately after exactly one opening move.")
+local awaitingImport = known ~= 32
 
 local whiteToMove = startedAfterOpening and (PLAY_AS == "White") or (not startedAfterOpening)
 local halfmove, fullmove = 0, startedAfterOpening and 2 or 1
+local initialAnalysisPending = true
+
+local function recommend(snapshot)
+    local fen = makeFen(snapshot, pieceTypes, whiteToMove, halfmove, fullmove)
+    local result = askStockfish(fen)
+    if not result or not result.bestmove then return end
+    local fromSquare, toSquare = result.bestmove:sub(1, 2), result.bestmove:sub(3, 4)
+    local wantedPiece = "Unknown piece"
+    for token, square in pairs(snapshot) do
+        if square == fromSquare and pieceTypes[token] then
+            wantedPiece = pieceTypes[token]
+            break
+        end
+    end
+    local promotion = result.bestmove:sub(5, 5)
+    local suffix = promotion ~= "" and promotion ~= " " and " (promote)" or ""
+    local message = string.format("Move %s: %s -> %s%s", wantedPiece, fromSquare, toSquare, suffix)
+    removeArrow()
+    showArrow(fromSquare, toSquare, Color3.fromRGB(40, 220, 80))
+    print("[Stockfish] " .. message)
+end
+
 while true do
     if UI and UI.GetValue then
         local selected = UI.GetValue("chess_play_as")
@@ -255,6 +329,51 @@ while true do
     end
     wait(SCAN_DELAY)
     local success, current = pcall(scan)
+    if newGameRequested and success then
+        pieceTypes = {}
+        for token, square in pairs(current) do
+            pieceTypes[token] = pieceAtStart(square)
+        end
+        previous = current
+        whiteToMove = true
+        halfmove, fullmove = 0, 1
+        awaitingImport = false
+        initialAnalysisPending = true
+        pendingFen = nil
+        importStatus = "New game ready"
+        removeArrow()
+        newGameRequested = false
+        continue
+    end
+    if pendingFen and success then
+        local imported, position, side = pcall(fenPieces, pendingFen)
+        if imported then
+            for token, square in pairs(current) do
+                pieceTypes[token] = position[square]
+            end
+            previous = current
+            whiteToMove = side
+            awaitingImport = false
+            initialAnalysisPending = true
+            importStatus = "Position imported"
+            print("[Chess] Position imported successfully")
+            removeArrow()
+        else
+            importStatus = "Invalid FEN"
+        end
+        pendingFen = nil
+        continue
+    end
+    if awaitingImport then
+        continue
+    end
+    if initialAnalysisPending then
+        local shouldAnalyze = PLAY_AS == "Any"
+            or (PLAY_AS == "White" and whiteToMove)
+            or (PLAY_AS == "Black" and not whiteToMove)
+        if shouldAnalyze then recommend(previous) end
+        initialAnalysisPending = false
+    end
     if success and not sameSnapshot(previous, current) then
         wait(SCAN_DELAY)
         local stable, confirmed = pcall(scan)
@@ -323,6 +442,7 @@ while true do
                         local message = string.format("Move %s: %s -> %s%s", wantedPiece, fromSquare, toSquare, suffix)
                         removeArrow()
                         showArrow(fromSquare, toSquare, Color3.fromRGB(40, 220, 80))
+                        print("[Stockfish] " .. message)
                     end
                 end
             end
@@ -330,4 +450,6 @@ while true do
         end
     end
 end
+
+
 
