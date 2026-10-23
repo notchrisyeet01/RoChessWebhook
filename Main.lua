@@ -1,3 +1,4 @@
+-- Main.lua updated at 10/23/26
 
 local FLIP_BOARD = false
 local SCAN_DELAY = 0.15
