@@ -17,7 +17,7 @@ local newGameRequested = false
 local promotionNames = {q="Queen", r="Rook", b="Bishop", n="Knight"}
 
 local WEBHOOK_URL = "Paste_Webhook_URL_Here"
-local webhookEnabled = false  -- toggled from UI
+local webhookEnabled = true
 
 local function sendToWebhook(message, fen, backend)
     if not webhookEnabled or not WEBHOOK_URL or WEBHOOK_URL == "" then return end
@@ -28,7 +28,6 @@ local function sendToWebhook(message, fen, backend)
         fen or ""
     )
     local payload = HttpService:JSONEncode({ content = content })
-    -- fire and forget — non-blocking via task.spawn so it never stalls the game loop
     task.spawn(function()
         httppost(WEBHOOK_URL, payload, "application/json")
     end)
