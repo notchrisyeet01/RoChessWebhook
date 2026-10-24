@@ -16,21 +16,20 @@ local importStatus = "Waiting for a FEN position"
 local newGameRequested = false
 local promotionNames = {q="Queen", r="Rook", b="Bishop", n="Knight"}
 
-local WEBHOOK_URL = "Paste_Webhook_URL_Here"
+local WEBHOOK_URL = "PASTE_WEBHOOK_URL_HERE"
 local webhookEnabled = true
 
 local function sendToWebhook(message, fen, backend)
-    if not webhookEnabled or not WEBHOOK_URL or WEBHOOK_URL == "" then return end
-    local content = string.format(
-        "**[RoChess · Stockfish %s]**\n%s\n```\n%s\n```",
-        backend or "?",
-        message,
-        fen or ""
+    if not webhookEnabled then return end
+    local HS = game:GetService("HttpService")
+	local content = string.format(
+    	"**[RoChess \xc2\xb7 Stockfish %s]**\n%s",
+    	tostring(backend or "?"),
+    	tostring(message)
     )
-    local payload = HttpService:JSONEncode({ content = content })
-    task.spawn(function()
-        httppost(WEBHOOK_URL, payload, "application/json")
-    end)
+    local ok, payload = pcall(function() return HS:JSONEncode({ content = content }) end)
+    if not ok then print("[Webhook] encode error: " .. tostring(payload)); return end
+    pcall(function() httppost(WEBHOOK_URL, payload, "application/json") end)
 end
 
 local function removeArrow()
@@ -80,6 +79,15 @@ if UI and UI.AddTab then
         settings:Button("New Game", function()
             newGameRequested = true
         end)
+
+        local wh = tab:Section("Webhook", "Left")
+        wh:Toggle("wh_enabled", "Send moves to Discord", true, function(state)
+            webhookEnabled = state
+        end)
+        wh:Button("Test Webhook", function()
+            sendToWebhook("Webhook test OK", "startpos", "Test")
+        end)
+
         local position = tab:Section("Position Import", "Right")
         local fenInput = position:InputText("chess_fen", "FEN position", "", function(text)
             enteredFen = text or ""
@@ -274,6 +282,7 @@ end
 local ok, previous = pcall(scan)
 if not ok then print("[Chess Detect] Initialization failed: " .. tostring(previous)); return end
 local pieceTypes, known = {}, 0
+
 local unknownTokens = {}
 local startedAfterOpening = false
 for token, square in pairs(previous) do
@@ -339,6 +348,7 @@ local function recommend(snapshot)
     showArrow(fromSquare, toSquare, Color3.fromRGB(40, 220, 80))
     local backend = result.backend == "local" and "Local" or "Render"
     print("[Stockfish " .. backend .. "] " .. message)
+    sendToWebhook(message, fen, backend)
 end
 
 while true do
@@ -469,6 +479,7 @@ while true do
                         showArrow(fromSquare, toSquare, Color3.fromRGB(40, 220, 80))
                         local backend = result.backend == "local" and "Local" or "Render"
                         print("[Stockfish " .. backend .. "] " .. message)
+                        sendToWebhook(message, fen, backend)
                     end
                 end
             end
