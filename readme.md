@@ -9,7 +9,7 @@ FORKED FROM: [youziwing/RoChessM](https://github.com/youziwing/RoChessM)
 
 ## Part 2: How to create the Webhook
 1. If Main.lua isnt updated to the latest script version, go to [WebhookAddon.lua](https://github.com/notchrisyeet01/RoChessWebhook/blob/main/WebhookAddon.lua) and copy everything.
-2. 
+2. WORK IN PROGRESS
 
 ## Credits
 Original: [youziwing](https://github.com/youziwing)
