@@ -112,36 +112,75 @@ end
 
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
+
 local WEBHOOK_URL = "PASTE_YOUR_DISCORD_WEBHOOK_URL_HERE"
 
 local oldPrint = print
 
-print = function(...)
-    local args = {...}
-    oldPrint(...)
+local httpRequest
 
-    local parts = {}
-    for i, v in ipairs(args) do
-        parts[i] = tostring(v)
+if type(request) == "function" then
+    httpRequest = request
+elseif type(http_request) == "function" then
+    httpRequest = http_request
+elseif type(syn) == "table" and type(syn.request) == "function" then
+    httpRequest = syn.request
+end
+
+local function sendToDiscord(message)
+    if WEBHOOK_URL == ""
+        or WEBHOOK_URL == "PASTE_YOUR_DISCORD_WEBHOOK_URL_HERE" then
+        oldPrint("[Discord] Set your webhook URL first.")
+        return
+    end
+
+    if not httpRequest then
+        oldPrint("[Discord] No supported HTTP request function found.")
+        return
     end
 
     task.spawn(function()
-        pcall(function()
-            local body = HttpService:JSONEncode({
-                content = table.concat(parts, " "):sub(1, 1900)
-            })
-
-            request({
+        local ok, result = pcall(function()
+            local response = httpRequest({
                 Url = WEBHOOK_URL,
                 Method = "POST",
                 Headers = {
                     ["Content-Type"] = "application/json"
                 },
-                Body = body
+                Body = HttpService:JSONEncode({
+                    content = message:sub(1, 1900)
+                })
             })
+
+            local status = response
+                and (response.StatusCode or response.Status)
+
+            if status and (status < 200 or status >= 300) then
+                error("Discord returned HTTP " .. tostring(status))
+            end
+
+            return response
         end)
+
+        if not ok then
+            oldPrint("[Discord] Send failed: " .. tostring(result))
+        end
     end)
 end
+
+print = function(...)
+    local count = select("#", ...)
+    local parts = {}
+
+    for i = 1, count do
+        parts[i] = tostring(select(i, ...))
+    end
+
+    oldPrint(...)
+    sendToDiscord(table.concat(parts, " "))
+end
+
+sendToDiscord("RoChess logger started.")
 local player = Players.LocalPlayer
 
 local function child(parent, name)
