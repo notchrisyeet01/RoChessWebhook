@@ -1,7 +1,7 @@
 # RoChessM (Forked)
 FORKED FROM: [youziwing/RoChessM](https://github.com/youziwing/RoChessM)
 
-THE Main.lua FILE IS CUSTOMIZED TO ADD THE WEBHOOK INTEGRATION FEATURE. THE ADDED LINES ARE IN [WebhookAddon.lua](https://github.com/notchrisyeet01/RoChessWebhook/blob/main/WebhookAddon.lua)
+**The Main.lua file is customized to add the webhook integration feature. The added lines are in [WebhookAddon.lua](https://github.com/notchrisyeet01/RoChessWebhook/blob/main/WebhookAddon.lua)**
 
 ## Part 1: How to create the Webhook
 1. Create a new Discord server (or use an existing one).
