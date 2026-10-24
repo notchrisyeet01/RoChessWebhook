@@ -1,16 +1,15 @@
-local WEBHOOK_URL = "Paste_Webhook_URL_Here"
+local WEBHOOK_URL = "PASTE_WEBHOOK_URL_HERE"
 local webhookEnabled = true
 
 local function sendToWebhook(message, fen, backend)
-    if not webhookEnabled or not WEBHOOK_URL or WEBHOOK_URL == "" then return end
-    local content = string.format(
-        "**[RoChess · Stockfish %s]**\n%s\n```\n%s\n```",
-        backend or "?",
-        message,
-        fen or ""
+    if not webhookEnabled then return end
+    local HS = game:GetService("HttpService")
+	local content = string.format(
+    	"**[RoChess \xc2\xb7 Stockfish %s]**\n%s",
+    	tostring(backend or "?"),
+    	tostring(message)
     )
-    local payload = HttpService:JSONEncode({ content = content })
-    task.spawn(function()
-        httppost(WEBHOOK_URL, payload, "application/json")
-    end)
+    local ok, payload = pcall(function() return HS:JSONEncode({ content = content }) end)
+    if not ok then print("[Webhook] encode error: " .. tostring(payload)); return end
+    pcall(function() httppost(WEBHOOK_URL, payload, "application/json") end)
 end
