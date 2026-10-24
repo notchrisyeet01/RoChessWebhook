@@ -1,4 +1,4 @@
--- Main.lua updated at 10/23/26
+-- Main.lua updated at 10/23/26 9:46 PM EST
 -- Main.lua has the webhook integration added automatically; paste your webhook URL in Matcha's LuaU environment.
 
 local FLIP_BOARD = false
@@ -79,15 +79,6 @@ if UI and UI.AddTab then
         settings:Button("New Game", function()
             newGameRequested = true
         end)
-
-        local wh = tab:Section("Webhook", "Left")
-        wh:Toggle("wh_enabled", "Send moves to Discord", true, function(state)
-            webhookEnabled = state
-        end)
-        wh:Button("Test Webhook", function()
-            sendToWebhook("Webhook test OK", "startpos", "Test")
-        end)
-
         local position = tab:Section("Position Import", "Right")
         local fenInput = position:InputText("chess_fen", "FEN position", "", function(text)
             enteredFen = text or ""
@@ -207,9 +198,11 @@ local function scan()
     assert(spacing < math.huge and spacing >= 4, "Could not calculate board spacing.")
     boardCenters = {}
     for _, square in ipairs(squares) do
+        local centerX = square.x + spacing / 2
+        local centerY = square.y + spacing / 2
         boardCenters[squareName(square.index)] = Vector2.new(
-            square.x + spacing / 2,
-            square.y + spacing / 2
+            centerX,
+            centerY
         )
     end
     local tokens, occupied = {}, {}
@@ -282,7 +275,6 @@ end
 local ok, previous = pcall(scan)
 if not ok then print("[Chess Detect] Initialization failed: " .. tostring(previous)); return end
 local pieceTypes, known = {}, 0
-
 local unknownTokens = {}
 local startedAfterOpening = false
 for token, square in pairs(previous) do
@@ -328,6 +320,7 @@ local awaitingImport = known ~= 32
 local whiteToMove = startedAfterOpening and (PLAY_AS == "White") or (not startedAfterOpening)
 local halfmove, fullmove = 0, startedAfterOpening and 2 or 1
 local initialAnalysisPending = true
+local pendingPromotion = nil
 
 local function recommend(snapshot)
     local fen = makeFen(snapshot, pieceTypes, whiteToMove, halfmove, fullmove)
@@ -342,13 +335,16 @@ local function recommend(snapshot)
         end
     end
     local promotion = result.bestmove:sub(5, 5):lower()
+    pendingPromotion = nil
+    if promotionNames[promotion] then
+        pendingPromotion = {from=fromSquare, to=toSquare, kind=promotionNames[promotion]}
+    end
     local suffix = promotionNames[promotion] and " (promote to " .. promotionNames[promotion] .. ")" or ""
     local message = string.format("Move %s: %s -> %s%s", wantedPiece, fromSquare, toSquare, suffix)
     removeArrow()
     showArrow(fromSquare, toSquare, Color3.fromRGB(40, 220, 80))
     local backend = result.backend == "local" and "Local" or "Render"
     print("[Stockfish " .. backend .. "] " .. message)
-    sendToWebhook(message, fen, backend)
 end
 
 while true do
@@ -366,11 +362,22 @@ while true do
     local success, current = pcall(scan)
     if newGameRequested and success then
         pieceTypes = {}
+        local atStartingPosition = true
         for token, square in pairs(current) do
             pieceTypes[token] = pieceAtStart(square)
+            if not pieceTypes[token] then atStartingPosition = false end
+        end
+        if atStartingPosition then
+            local count = 0
+            for _ in pairs(pieceTypes) do count = count + 1 end
+            atStartingPosition = count == 32
         end
         previous = current
-        whiteToMove = true
+        if PLAY_AS == "Black" and not atStartingPosition then
+            whiteToMove = false
+        else
+            whiteToMove = true
+        end
         halfmove, fullmove = 0, 1
         awaitingImport = false
         initialAnalysisPending = true
@@ -414,14 +421,45 @@ while true do
         local stable, confirmed = pcall(scan)
         if stable and sameSnapshot(current, confirmed) then
             local moved, capture = {}, false
+            local added, removed = {}, {}
             for token, newSquare in pairs(confirmed) do
                 local oldSquare = previous[token]
-                if oldSquare and oldSquare ~= newSquare then moved[#moved + 1] = {token=token, from=oldSquare, to=newSquare, piece=pieceTypes[token]} end
+                if oldSquare and oldSquare ~= newSquare then
+                    moved[#moved + 1] = {token=token, from=oldSquare, to=newSquare, piece=pieceTypes[token]}
+                elseif not oldSquare then
+                    added[#added + 1] = {token=token, to=newSquare}
+                end
             end
             for token in pairs(previous) do
                 if not confirmed[token] then
                     capture = true
+                    removed[#removed + 1] = {token=token, from=previous[token], piece=pieceTypes[token]}
                     pieceTypes[token] = nil
+                end
+            end
+            if #moved == 0 and #added == 1 then
+                local promoted = added[1]
+                local promotionFrom, promotionColor, promotionKind
+                for _, gone in ipairs(removed) do
+                    local rank = tonumber(promoted.to:sub(2, 2))
+                    if gone.piece and gone.piece:find("Pawn")
+                        and (rank == 1 or rank == 8)
+                        and (not pendingPromotion or pendingPromotion.to == promoted.to) then
+                        promotionFrom = gone.from
+                        promotionColor = gone.piece:sub(1, 5)
+                        promotionKind = pendingPromotion and pendingPromotion.kind or "Queen"
+                        break
+                    end
+                end
+                if promotionFrom then
+                    pieceTypes[promoted.token] = promotionColor .. " " .. promotionKind
+                    moved[1] = {
+                        token=promoted.token,
+                        from=promotionFrom,
+                        to=promoted.to,
+                        piece=promotionColor .. " " .. promotionKind
+                    }
+                    pendingPromotion = nil
                 end
             end
             if #moved > 0 then
@@ -445,6 +483,7 @@ while true do
                     if destinationRank == 1 or destinationRank == 8 then
                         local color = move.piece:sub(1, 5)
                         pieceTypes[move.token] = color .. " Queen"
+                        pendingPromotion = nil
                     end
                 end
                 whiteToMove = not (move.piece and move.piece:sub(1, 5) == "White")
@@ -479,7 +518,6 @@ while true do
                         showArrow(fromSquare, toSquare, Color3.fromRGB(40, 220, 80))
                         local backend = result.backend == "local" and "Local" or "Render"
                         print("[Stockfish " .. backend .. "] " .. message)
-                        sendToWebhook(message, fen, backend)
                     end
                 end
             end
